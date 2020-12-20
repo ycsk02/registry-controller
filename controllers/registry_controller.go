@@ -196,6 +196,7 @@ func buildSecret(registry managerv1.Registry, namespace string) *api.Secret {
 			Namespace:       namespace,
 			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(&registry, managerv1.GroupVersion.WithKind("Registry"))},
 		},
+		Type: api.SecretTypeDockerConfigJson,
 		Data: map[string][]byte{".dockerconfigjson": authjson},
 	}
 	return secret
