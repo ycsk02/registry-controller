@@ -1,0 +1,21 @@
+apiVersion: manager.sukai.io/v1
+kind: Registry
+metadata:
+  name: registry-sample2
+spec:
+  secretname: "sukai2"
+  namespace: 
+    - allnamespaces
+  registryservers:
+  - server: "127.0.0.1:8088"
+    email: "ycsk02@hotmail.com"
+    password: "sukai"
+    username: "sukai"
+  - server: "172.16.0.188:8082"
+    email: "ycsk02@hotmail.com"
+    password: "sukai"
+    username: "sukai"
+  - server: "192.168.0.188:8082"
+    email: "ycsk02@hotmail.com"
+    password: "sukai"
+    username: "sukai"

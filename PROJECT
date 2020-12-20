@@ -1,0 +1,7 @@
+domain: sukai.io
+repo: github.com/ycsk02/registry-controller
+resources:
+- group: manager
+  kind: Registry
+  version: v1
+version: "2"
