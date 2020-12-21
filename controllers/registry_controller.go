@@ -95,14 +95,14 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 				}
 
 			} else {
-				// this namespace is not in any registries, ignore it
-				log.Info("This namespace is not in any registries", "namespace", reqNamespacedName)
+				// this namespace is not in this registry, ignore it
+				log.Info("This namespace is not in this registry", "registry", registry.Name)
 			}
 		}
 
 	} else {
 		// reconcile for Registry watch
-		log.Info("reconcile for Registry")
+		log.Info("reconcile for Registry", "name", reqNamespacedName)
 		registry := managerv1.Registry{}
 		if err := r.Client.Get(ctx, client.ObjectKey{Name: reqNamespacedName}, &registry); err != nil {
 			if apierrors.IsNotFound(err) {
@@ -139,7 +139,7 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 				}
 			}
 		} else {
-			// reconcile for Registry in my namespaces
+			// reconcile for Registry in its namespaces
 			for _, namespace := range registry.Spec.NameSpace {
 				if !namespaceExists(namespaceList, namespace) {
 					log.Info("namespace defined in registry is not exists, skip", "namespace", namespace)
@@ -223,7 +223,7 @@ func namespaceExists(namespacelist *api.NamespaceList, namespace string) bool {
 func (r *RegistryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&managerv1.Registry{}).
+		Owns(&api.Secret{}).
 		Watches(&source.Kind{Type: &api.Namespace{}}, &handler.EnqueueRequestForObject{}).
-		Watches(&source.Kind{Type: &managerv1.Registry{}}, &handler.EnqueueRequestForObject{}).
 		Complete(r)
 }
