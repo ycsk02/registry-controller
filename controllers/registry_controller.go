@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"github.com/go-logr/logr"
+	"github.com/prometheus/common/log"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -52,120 +53,85 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 	// your logic here
 	reqNamespacedName := strings.Trim(req.NamespacedName.String(), "/")
 	secret := api.Secret{}
-	registryList := managerv1.RegistryList{}
-	if err := r.Client.List(ctx, &registryList); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Did not find any Registry")
-			return ctrl.Result{}, nil
-		}
-		return ctrl.Result{}, err
-	}
 
 	namespaceList := &api.NamespaceList{}
 	if err := r.Client.List(ctx, namespaceList); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if namespaceExists(namespaceList, reqNamespacedName) {
-		// reconcile for Namespace watch
-		log.Info("reconcile for Namespace")
-		for _, registry := range registryList.Items {
-			if containsString(registry.Spec.NameSpace, "allnamespaces") || containsString(registry.Spec.NameSpace, reqNamespacedName) {
-				// this registry is for allnamespaces or my namespace
-				expectSecret := buildSecret(registry, reqNamespacedName)
-				if err := r.Client.Get(ctx, client.ObjectKey{Namespace: reqNamespacedName, Name: registry.Spec.SecretName}, &secret); err != nil {
-					if apierrors.IsNotFound(err) {
-						log.Info("Secret is not found, creating secret", "namespace", reqNamespacedName, "secret", expectSecret)
-						if err := r.Client.Create(ctx, expectSecret); err != nil {
-							return ctrl.Result{}, err
-						}
-					} else {
-						log.Error(err, "failed to get secret resource")
+	log.Info("reconcile for Registry", "name", reqNamespacedName)
+	registry := managerv1.Registry{}
+	if err := r.Get(ctx, client.ObjectKey{Name: reqNamespacedName}, &registry); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Registry is not found, skip", "registry", reqNamespacedName)
+			return ctrl.Result{}, nil
+		} else {
+			log.Error(err, "failed to get Registry resource")
+			return ctrl.Result{}, err
+		}
+	}
+	if containsString(registry.Spec.NameSpace, "allnamespaces") {
+		// reconcile for Registry in all namespaces
+		for _, ns := range namespaceList.Items {
+			if !ns.DeletionTimestamp.IsZero() {
+				log.Info("delettion timestamp is not zero")
+				break
+			}
+			expectSecret := buildSecret(registry, ns.Name)
+			if err := r.Get(ctx, client.ObjectKey{Namespace: ns.Name, Name: registry.Spec.SecretName}, &secret); err != nil {
+				if apierrors.IsNotFound(err) {
+					log.Info("Secret is not found, creating secret", "namespace", ns.Name, "secret", expectSecret)
+					if err := r.Client.Create(ctx, expectSecret); err != nil {
 						return ctrl.Result{}, err
 					}
 				} else {
-					log.Info("secret is found in namespace, update it if not the newest", "namespace:", reqNamespacedName, "secret:", registry.Spec.SecretName)
-					if !equality.Semantic.DeepDerivative(expectSecret, secret) {
-						if err := r.Client.Update(ctx, expectSecret); err != nil {
-							log.Error(err, "failed to update secret resource")
-							return ctrl.Result{}, err
-						}
-						log.Info("Secret is updated", "namespace", reqNamespacedName, "secret:", registry.Spec.SecretName)
-					}
+					log.Error(err, "failed to get secret resource")
+					return ctrl.Result{}, err
 				}
-
 			} else {
-				// this namespace is not in this registry, ignore it
-				log.Info("This namespace is not in this registry", "registry", registry.Name)
+				log.Info("secret is found in namespace", "namespace:", ns.Name, "secret:", registry.Spec.SecretName)
+				if !equality.Semantic.DeepDerivative(expectSecret.Data, secret.Data) {
+					if err := r.Client.Update(ctx, expectSecret); err != nil {
+						log.Error(err, "failed to update secret resource")
+						return ctrl.Result{}, err
+					}
+					log.Info("Secret is updated", "namespace", ns.Name, "secret:", registry.Spec.SecretName)
+				}
 			}
 		}
-
-	} else {
-		// reconcile for Registry watch
-		log.Info("reconcile for Registry", "name", reqNamespacedName)
-		registry := managerv1.Registry{}
-		if err := r.Client.Get(ctx, client.ObjectKey{Name: reqNamespacedName}, &registry); err != nil {
+	}
+	for _, namespace := range registry.Spec.NameSpace {
+		if !namespaceExists(namespaceList, namespace) {
+			log.Info("namespace defined in registry is not exists, skip", "namespace", namespace)
+			break
+		}
+		var ns api.Namespace
+		if err := r.Get(context.TODO(), client.ObjectKey{Name: namespace}, &ns); err != nil {
+			return ctrl.Result{}, err
+		}
+		if !ns.DeletionTimestamp.IsZero() {
+			log.Info("delettion timestamp is not zero")
+			break
+		}
+		expectSecret := buildSecret(registry, namespace)
+		if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: registry.Spec.SecretName}, &secret); err != nil {
 			if apierrors.IsNotFound(err) {
-				log.Info("Registry is not found, skip", "registry", reqNamespacedName)
-				return ctrl.Result{}, nil
+				log.Info("Secret is not found, creating secret", "namespace", namespace, "secret", expectSecret)
+				if err := r.Client.Create(ctx, expectSecret); err != nil {
+					return ctrl.Result{}, err
+				}
 			} else {
-				log.Error(err, "failed to get Registry resource")
+				log.Error(err, "failed to get secret resource")
 				return ctrl.Result{}, err
 			}
-		}
-		if containsString(registry.Spec.NameSpace, "allnamespaces") {
-			// reconcile for Registry in all namespaces
-			for _, ns := range namespaceList.Items {
-				expectSecret := buildSecret(registry, ns.Name)
-				if err := r.Client.Get(ctx, client.ObjectKey{Namespace: ns.Name, Name: registry.Spec.SecretName}, &secret); err != nil {
-					if apierrors.IsNotFound(err) {
-						log.Info("Secret is not found, creating secret", "namespace", ns.Name, "secret", expectSecret)
-						if err := r.Client.Create(ctx, expectSecret); err != nil {
-							return ctrl.Result{}, err
-						}
-					} else {
-						log.Error(err, "failed to get secret resource")
-						return ctrl.Result{}, err
-					}
-				} else {
-					log.Info("secret is found in namespace, update it if not the newest", "namespace:", ns.Name, "secret:", registry.Spec.SecretName)
-					if !equality.Semantic.DeepDerivative(expectSecret, secret) {
-						if err := r.Client.Update(ctx, expectSecret); err != nil {
-							log.Error(err, "failed to update secret resource")
-							return ctrl.Result{}, err
-						}
-						log.Info("Secret is updated", "namespace", ns.Name, "secret:", registry.Spec.SecretName)
-					}
-				}
-			}
 		} else {
-			// reconcile for Registry in its namespaces
-			for _, namespace := range registry.Spec.NameSpace {
-				if !namespaceExists(namespaceList, namespace) {
-					log.Info("namespace defined in registry is not exists, skip", "namespace", namespace)
-					break
+			log.Info("secret is found in namespace", "namespace:", namespace, "secret:", registry.Spec.SecretName)
+			if !equality.Semantic.DeepDerivative(expectSecret, secret) {
+				if err := r.Client.Update(ctx, expectSecret); err != nil {
+					log.Error(err, "failed to update secret resource")
+					return ctrl.Result{}, err
 				}
-				expectSecret := buildSecret(registry, namespace)
-				if err := r.Client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: registry.Spec.SecretName}, &secret); err != nil {
-					if apierrors.IsNotFound(err) {
-						log.Info("Secret is not found, creating secret", "namespace", namespace, "secret", expectSecret)
-						if err := r.Client.Create(ctx, expectSecret); err != nil {
-							return ctrl.Result{}, err
-						}
-					} else {
-						log.Error(err, "failed to get secret resource")
-						return ctrl.Result{}, err
-					}
-				} else {
-					log.Info("secret is found in namespace, update it if not the newest", "namespace:", namespace, "secret:", registry.Spec.SecretName)
-					if !equality.Semantic.DeepDerivative(expectSecret, secret) {
-						if err := r.Client.Update(ctx, expectSecret); err != nil {
-							log.Error(err, "failed to update secret resource")
-							return ctrl.Result{}, err
-						}
-						log.Info("Secret is updated", "namespace", namespace, "secret:", registry.Spec.SecretName)
-					}
-				}
+				log.Info("Secret is updated", "namespace", namespace, "secret:", registry.Spec.SecretName)
 			}
 		}
 	}
@@ -220,10 +186,40 @@ func namespaceExists(namespacelist *api.NamespaceList, namespace string) bool {
 	return ok
 }
 
+func (r *RegistryReconciler) NamespaceToRegistry(o handler.MapObject) []ctrl.Request {
+	ctx := context.Background()
+	registryList := managerv1.RegistryList{}
+
+	// namespace := o.Meta.GetName()
+	var requests []ctrl.Request
+	var namespace api.Namespace
+
+	if err := r.Get(context.TODO(), client.ObjectKey{Name: o.Meta.GetName()}, &namespace); err != nil {
+		return nil
+	}
+
+	if !namespace.DeletionTimestamp.IsZero() {
+		log.Info("delettion timestamp is not zero")
+		return nil
+	}
+
+	if err := r.Client.List(ctx, &registryList); err != nil {
+		return nil
+	}
+
+	for _, registry := range registryList.Items {
+		if containsString(registry.Spec.NameSpace, "allnamespaces") || containsString(registry.Spec.NameSpace, namespace.Name) {
+			requests = append(requests, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: "", Name: registry.Name}})
+		}
+	}
+
+	return requests
+}
+
 func (r *RegistryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&managerv1.Registry{}).
 		Owns(&api.Secret{}).
-		Watches(&source.Kind{Type: &api.Namespace{}}, &handler.EnqueueRequestForObject{}).
+		Watches(&source.Kind{Type: &api.Namespace{}}, &handler.EnqueueRequestsFromMapFunc{ToRequests: handler.ToRequestsFunc(r.NamespaceToRegistry)}).
 		Complete(r)
 }
