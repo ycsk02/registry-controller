@@ -1,5 +1,5 @@
 /*
-
+Copyright 2020.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// RegistrySpec defines the desired state of Registry
+
 type RegistryServer struct {
 	Server   string `json:"server,omitempty"`
 	UserName string `json:"username,omitempty"`
@@ -35,7 +37,7 @@ type RegistrySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	SecretName      string           `json:"secretname,omitempty"`
-	NameSpace       []string         `json:"namespace,omitempty"`
+	TargetNamespace []string         `json:"targetnamespace,omitempty"`
 	RegistryServers []RegistryServer `json:"registryservers,omitempty"`
 }
 
@@ -48,7 +50,7 @@ type RegistryStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.spec.secretname`
-// +kubebuilder:printcolumn:name="TargetNamespace",type=string,JSONPath=`.spec.namespace`
+// +kubebuilder:printcolumn:name="TargetNamespace",type=string,JSONPath=`.spec.targetnamespace`
 
 // Registry is the Schema for the registries API
 type Registry struct {

@@ -1,11 +1,11 @@
 apiVersion: manager.sukai.io/v1
 kind: Registry
 metadata:
-  name: registry-sample2
+  name: registry-sample3
 spec:
-  secretname: "sukai2"
+  secretname: "sukai3"
   targetnamespace:
-  - allnamespaces
+  - sukai04
   registryservers:
   - server: "127.0.0.1:8088"
     email: "ycsk02@hotmail.com"

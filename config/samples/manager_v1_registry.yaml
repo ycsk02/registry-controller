@@ -4,11 +4,11 @@ metadata:
   name: registry-sample
 spec:
   secretname: "sukai"
-  namespace: 
-    - sukai
-    - sukai01
-    - sukai02
-    - sukai03
+  targetnamespace:
+  - sukai
+  - sukai01
+  - sukai02
+  - sukai03
   registryservers:
   - server: "127.0.0.1:8080"
     email: "ycsk02@hotmail.com"

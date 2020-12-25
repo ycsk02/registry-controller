@@ -1,7 +1,9 @@
 domain: sukai.io
+layout: go.kubebuilder.io/v2
+projectName: registry
 repo: github.com/ycsk02/registry-controller
 resources:
 - group: manager
   kind: Registry
   version: v1
-version: "2"
+version: 3-alpha
