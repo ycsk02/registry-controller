@@ -79,7 +79,6 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			}
 
 			expectSecret := buildSecret(registry, ns.Name)
-			// condition := &managerv1.Condition{}
 
 			if err := r.Get(ctx, client.ObjectKey{Name: registry.Spec.SecretName, Namespace: ns.Name}, &secret); err != nil {
 				if !apierrors.IsNotFound(err) {
@@ -299,6 +298,6 @@ func (r *RegistryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
 					return false
 				},
-			})).
+		})).
 		Complete(r)
 }
