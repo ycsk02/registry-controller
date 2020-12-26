@@ -57,11 +57,14 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 		secret        api.Secret
 		namespace     api.Namespace
 		namespaceList api.NamespaceList
+		conditions    []managerv1.Condition
 	)
 
 	if err := r.Get(ctx, client.ObjectKey{Name: req.Name}, &registry); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	conditions = registry.Status.Conditions
 
 	switch {
 	case containsString(registry.Spec.TargetNamespace, "allnamespaces"):
@@ -69,7 +72,6 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			return ctrl.Result{}, err
 		}
 
-		log.Info("create secret in all namespaces")
 		for _, ns := range namespaceList.Items {
 			if !ns.GetDeletionTimestamp().IsZero() {
 				r.Log.Info("namespace is terminating, ignore", "namespace", ns.Name)
@@ -77,23 +79,54 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			}
 
 			expectSecret := buildSecret(registry, ns.Name)
+			// condition := &managerv1.Condition{}
 
 			if err := r.Get(ctx, client.ObjectKey{Name: registry.Spec.SecretName, Namespace: ns.Name}, &secret); err != nil {
-				if apierrors.IsNotFound(err) {
-					log.Info("create secret in namespace", "namespace", ns.Name)
-					if err := r.Create(ctx, expectSecret); err != nil {
-						return ctrl.Result{}, err
-					}
-				} else {
+				if !apierrors.IsNotFound(err) {
 					return ctrl.Result{}, err
 				}
+
+				log.Info("create secret in namespace", "namespace", ns.Name)
+				if err := r.Create(ctx, expectSecret); err != nil {
+					c := managerv1.Condition{
+						Type:               "CreateFailed",
+						Status:             api.ConditionStatus("False"),
+						NamespaceResult:    []string{ns.Name},
+						LastTransitionTime: metav1.Now(),
+					}
+					conditions = append(conditions, c)
+					_ = r.Status().Update(ctx, &registry)
+					return ctrl.Result{}, err
+				}
+				c := managerv1.Condition{
+					Type:               "CreateSuccessful",
+					Status:             api.ConditionStatus("True"),
+					NamespaceResult:    []string{ns.Name},
+					LastTransitionTime: metav1.Now(),
+				}
+				conditions = append(conditions, c)
 			} else {
 				if equality.Semantic.DeepDerivative(expectSecret.Data, secret.Data) {
 					continue
 				}
 				if err := r.Update(ctx, expectSecret); err != nil {
+					c := managerv1.Condition{
+						Type:               "UpdateFailed",
+						Status:             api.ConditionStatus("False"),
+						NamespaceResult:    []string{ns.Name},
+						LastTransitionTime: metav1.Now(),
+					}
+					conditions = append(conditions, c)
+					_ = r.Status().Update(ctx, &registry)
 					return ctrl.Result{}, err
 				}
+				c := managerv1.Condition{
+					Type:               "UpdateSuccessful",
+					Status:             api.ConditionStatus("True"),
+					NamespaceResult:    []string{ns.Name},
+					LastTransitionTime: metav1.Now(),
+				}
+				conditions = append(conditions, c)
 			}
 		}
 	default:
@@ -101,6 +134,14 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			if err := r.Get(ctx, client.ObjectKey{Name: ns}, &namespace); err != nil {
 				if apierrors.IsNotFound(err) {
 					log.Info("namespace is not found skip", "namespace", ns)
+					c := managerv1.Condition{
+						Type:               "NamespaceNotFound",
+						Status:             api.ConditionStatus("False"),
+						NamespaceResult:    []string{ns},
+						LastTransitionTime: metav1.Now(),
+					}
+					conditions = append(conditions, c)
+					_ = r.Status().Update(ctx, &registry)
 					continue
 				} else {
 					return ctrl.Result{}, err
@@ -115,26 +156,56 @@ func (r *RegistryReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) {
 			expectSecret := buildSecret(registry, ns)
 
 			if err := r.Get(ctx, client.ObjectKey{Name: registry.Spec.SecretName, Namespace: ns}, &secret); err != nil {
-				if apierrors.IsNotFound(err) {
-					log.Info("create secret in namespace", "namespace", ns)
-					if err := r.Create(ctx, expectSecret); err != nil {
-						return ctrl.Result{}, err
-					}
-				} else {
+				if !apierrors.IsNotFound(err) {
 					return ctrl.Result{}, err
 				}
+
+				log.Info("create secret in namespace", "namespace", ns)
+				if err := r.Create(ctx, expectSecret); err != nil {
+					c := managerv1.Condition{
+						Type:               "CreateFailed",
+						Status:             api.ConditionStatus("False"),
+						NamespaceResult:    []string{ns},
+						LastTransitionTime: metav1.Now(),
+					}
+					conditions = append(conditions, c)
+					_ = r.Status().Update(ctx, &registry)
+					return ctrl.Result{}, err
+				}
+				c := managerv1.Condition{
+					Type:               "CreateSuccessful",
+					Status:             api.ConditionStatus("True"),
+					NamespaceResult:    []string{ns},
+					LastTransitionTime: metav1.Now(),
+				}
+				conditions = append(conditions, c)
 			} else {
 				if equality.Semantic.DeepDerivative(expectSecret.Data, secret.Data) {
 					continue
 				}
 				log.Info("update secret in namespace", "namespace", ns)
 				if err := r.Update(ctx, expectSecret); err != nil {
+					c := managerv1.Condition{
+						Type:               "UpdateFailed",
+						Status:             api.ConditionStatus("False"),
+						NamespaceResult:    []string{ns},
+						LastTransitionTime: metav1.Now(),
+					}
+					conditions = append(conditions, c)
 					return ctrl.Result{}, err
 				}
+				c := managerv1.Condition{
+					Type:               "UpdateSuccessful",
+					Status:             api.ConditionStatus("True"),
+					NamespaceResult:    []string{ns},
+					LastTransitionTime: metav1.Now(),
+				}
+				conditions = append(conditions, c)
 			}
 		}
 	}
-
+	registry.Status.Conditions = conditions
+	_ = r.Status().Update(ctx, &registry)
 	return ctrl.Result{}, nil
 }
 
@@ -199,7 +270,21 @@ func containsString(slice []string, s string) bool {
 
 func (r *RegistryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&managerv1.Registry{}).
+		For(&managerv1.Registry{}, builder.WithPredicates(predicate.Funcs{
+			CreateFunc: func(createEvent event.CreateEvent) bool {
+				return true
+			},
+			UpdateFunc: func(updateEvent event.UpdateEvent) bool {
+				if updateEvent.MetaNew.GetGeneration() == updateEvent.MetaOld.GetGeneration() {
+					return false
+				} else {
+					return true
+				}
+			},
+			DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
+				return true
+			},
+		})).
 		Owns(&api.Secret{}).
 		Watches(
 			&source.Kind{Type: &api.Namespace{}},

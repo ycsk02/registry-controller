@@ -9,6 +9,7 @@ spec:
   - sukai01
   - sukai02
   - sukai03
+  - sukai04
   registryservers:
   - server: "127.0.0.1:8080"
     email: "ycsk02@hotmail.com"

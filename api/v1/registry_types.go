@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	api "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -45,12 +46,26 @@ type RegistrySpec struct {
 type RegistryStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	Conditions []Condition `json:"conditions,omitempty"`
+}
+
+type ConditionType string
+
+type Condition struct {
+	Type               ConditionType       `json:"type"`
+	Status             api.ConditionStatus `json:"status"`
+	NamespaceResult    []string            `json:"namespaceresult,omitempty"`
+	LastTransitionTime metav1.Time         `json:"lastTransitionTime,omitempty"`
+	Reason             string              `json:"reason,omitempty"`
+	Message            string              `json:"message,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster
 // +kubebuilder:printcolumn:name="Secret",type=string,JSONPath=`.spec.secretname`
 // +kubebuilder:printcolumn:name="TargetNamespace",type=string,JSONPath=`.spec.targetnamespace`
+// +kubebuilder:subresource:status
 
 // Registry is the Schema for the registries API
 type Registry struct {

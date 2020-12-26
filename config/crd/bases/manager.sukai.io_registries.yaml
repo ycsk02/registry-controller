@@ -22,7 +22,8 @@ spec:
     plural: registries
     singular: registry
   scope: Cluster
-  subresources: {}
+  subresources:
+    status: {}
   validation:
     openAPIV3Schema:
       description: Registry is the Schema for the registries API
@@ -66,6 +67,30 @@ spec:
           type: object
         status:
           description: RegistryStatus defines the observed state of Registry
+          properties:
+            conditions:
+              items:
+                properties:
+                  lastTransitionTime:
+                    format: date-time
+                    type: string
+                  message:
+                    type: string
+                  namespaceresult:
+                    items:
+                      type: string
+                    type: array
+                  reason:
+                    type: string
+                  status:
+                    type: string
+                  type:
+                    type: string
+                required:
+                - status
+                - type
+                type: object
+              type: array
           type: object
       type: object
   version: v1

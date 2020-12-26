@@ -6,6 +6,7 @@ spec:
   secretname: "sukai3"
   targetnamespace:
   - sukai04
+  - sukai05
   registryservers:
   - server: "127.0.0.1:8088"
     email: "ycsk02@hotmail.com"
